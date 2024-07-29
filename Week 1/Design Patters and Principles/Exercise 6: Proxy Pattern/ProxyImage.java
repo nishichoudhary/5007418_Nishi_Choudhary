@@ -1,4 +1,3 @@
-// ProxyImage.java
 package ProxyPatternExample;
 
 public class ProxyImage implements Image
