@@ -1,81 +1,48 @@
---------------------------------------------------- Create Accounts table ------------------------------------------------------ 
-CREATE TABLE Accounts (
-    AccountID NUMBER PRIMARY KEY,
-    AccountHolder VARCHAR2(100),
-    Balance NUMBER
-);
-
--------------------------------------------------- Create a table for recording transactions------------------------------------ 
-CREATE TABLE Transactions (
-    TransactionID NUMBER PRIMARY KEY,
-    SenderID NUMBER,
-    ReceiverID NUMBER,
-    Amount NUMBER(18, 2),
-    TransactionType VARCHAR2(50),
-    TransactionDate DATE
-);
-
---------------------------------------------------- Sequence for primary keys --------------------------------------------------- 
-CREATE SEQUENCE AccountsSeq START WITH 1 INCREMENT BY 1;
-CREATE SEQUENCE TransactionsSeq START WITH 1 INCREMENT BY 1;
-
---------------------------------------------------- Insert sample data into Accounts table---------------------------------------
-INSERT INTO Accounts (AccountID, AccountHolder, Balance) VALUES (AccountsSeq.NEXTVAL, 'Nishi Choudhary', 1000);
-INSERT INTO Accounts (AccountID, AccountHolder, Balance) VALUES (AccountsSeq.NEXTVAL, 'Riya Singh', 500);
-INSERT INTO Accounts (AccountID, AccountHolder, Balance) VALUES (AccountsSeq.NEXTVAL, 'Amrita Kumari', 300);
-
-
----------------------------------------------------  Create Procedure ----------------------------------------------------------- 
-CREATE PROCEDURE TransferFunds (
-    p_SenderID IN NUMBER,
-    p_ReceiverID IN NUMBER,
-    p_TransferAmount IN NUMBER
-) IS
-    v_SenderBalance NUMBER;
+CREATE OR REPLACE PROCEDURE SafeTransferFunds (
+    p_FromAccountID IN NUMBER,
+    p_ToAccountID IN NUMBER,
+    p_Amount IN NUMBER
+) AS
+    v_FromBalance NUMBER;
+    v_ToBalance NUMBER;
 BEGIN
-    -- Start a transaction
-    -- Check if the sender has enough balance
-    SELECT Balance INTO v_SenderBalance FROM Accounts WHERE AccountID = p_SenderID FOR UPDATE;
+    -- Check the balance of the source account
+    SELECT Balance INTO v_FromBalance 
+    FROM Accounts 
+    WHERE AccountID = p_FromAccountID;
 
-    IF v_SenderBalance < p_TransferAmount THEN
-        -- If not enough balance, issue a ROLLBACK and an error message
-        ROLLBACK;
-        RAISE_APPLICATION_ERROR(-20001, 'Insufficient balance in sender account');
+    -- Check if the source account has sufficient balance
+    IF v_FromBalance < p_Amount THEN
+        RAISE_APPLICATION_ERROR(-20001, 'Insufficient funds in the source account.');
     END IF;
 
-    -- Deduct the amount from the sender’s account
-    UPDATE Accounts
-    SET Balance = Balance - p_TransferAmount
-    WHERE AccountID = p_SenderID;
+    -- Deduct the amount from the source account
+    UPDATE Accounts 
+    SET Balance = Balance - p_Amount 
+    WHERE AccountID = p_FromAccountID;
 
-    -- Add it to the receiver’s account
-    UPDATE Accounts
-    SET Balance = Balance + p_TransferAmount
-    WHERE AccountID = p_ReceiverID;
+    -- Add the amount to the destination account
+    UPDATE Accounts 
+    SET Balance = Balance + p_Amount 
+    WHERE AccountID = p_ToAccountID;
 
-    -- Record the transaction in the Transactions table with the type 'TRANSFER'
-    INSERT INTO Transactions (TransactionID, SenderID, ReceiverID, Amount, TransactionType, TransactionDate)
-    VALUES (TransactionsSeq.NEXTVAL, p_SenderID, p_ReceiverID, p_TransferAmount, 'TRANSFER', SYSDATE);
-
-    -- Commit the transaction if all operations are successful
+    -- Commit the transaction
     COMMIT;
+
 EXCEPTION
     WHEN OTHERS THEN
+        -- Rollback in case of any exception
         ROLLBACK;
-        RAISE;
-END;
+        -- Log the error message
+        DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+END SafeTransferFunds;
 /
-  
----------------------------------------------------  Test procedures -------------------------------------------------- 
+
+
+-- Test Procedure
 BEGIN
-    -- Successful transfer from AccountID 1 to AccountID 2
-    TransferFunds(1, 2, 200);
+    SafeTransferFunds(p_FromAccountID => 1, p_ToAccountID => 2, p_Amount => 200);
 END;
 /
 
-BEGIN
-    -- Attempt to transfer 2000 from AccountID 1 to AccountID 3
-    -- Fails due to insufficient funds
-    TransferFunds(1, 3, 2000);
-END;
-/
+select * from Accounts;
